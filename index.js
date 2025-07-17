@@ -34,32 +34,68 @@ async function run() {
         //category
         const db = client.db('medicineDB')
         const categoryCollection = db.collection('categories')
+        const usersCollection = db.collection('users')
 
         // app.get('/categories', async (req, res) => {
         //     const categories = await categoryCollection.find().toArray();
         //     res.send(categories)
         // })
 
+
+        //users
+        app.post('/users', async (req, res) => {
+            const email = req.body.email;
+            const userExits = await usersCollection.findOne({ email })
+            if (userExits) {
+                return res.status(200).send({
+                    message: "User already exits",
+                    inserted: false
+                })
+
+            }
+
+            const user = req.body;
+            const result = await usersCollection.insertOne(user);
+            res.send(result)
+
+        })
+
+        //medicines
+        // POST medicine
+        app.post('/medicines', async (req, res) => {
+            const medicine = req.body;
+            const result = await db.collection('medicines').insertOne(medicine);
+            res.send(result);
+        });
+
+        app.get('/medicines', async (req, res) => {
+            try {
+                const email = req.query.email;
+                const query = email ? { added_by: email } : {};
+                const result = await db.collection('medicines').find(query).toArray();
+                res.send(result);
+            } catch (error) {
+                console.error("Error fetching medicines:", error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
+
+
+
+
+
         app.get('/categories', async (req, res) => {
             try {
                 const userEmail = req.query.email;
-
-                const query = userEmail ? { created_by: userEmail } : {}
-                const options = {
-                    sort: {
-                        createdAt: -1
-                    }
-
-
-                }
-                const categories = await categoryCollection.find(query, options).toArray();
-                res.send(categories)
-
+                const query = userEmail ? { created_by: userEmail } : {};
+                const categories = await categoryCollection.find(query).sort({ createdAt: -1 }).toArray();
+                res.send(categories);
             } catch (error) {
                 console.error('error fetching', error);
-                res.status(500).send({ message: 'failed to get category' })
+                res.status(500).send({ message: 'failed to get category' });
             }
-        })
+        });
+
 
 
         // Add Category (POST)
