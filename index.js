@@ -3,7 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const app = express();
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 
 dotenv.config();
@@ -35,9 +35,30 @@ async function run() {
         const db = client.db('medicineDB')
         const categoryCollection = db.collection('categories')
 
+        // app.get('/categories', async (req, res) => {
+        //     const categories = await categoryCollection.find().toArray();
+        //     res.send(categories)
+        // })
+
         app.get('/categories', async (req, res) => {
-            const categories = await categoryCollection.find().toArray();
-            res.send(categories)
+            try {
+                const userEmail = req.query.email;
+
+                const query = userEmail ? { created_by: userEmail } : {}
+                const options = {
+                    sort: {
+                        createdAt: -1
+                    }
+
+
+                }
+                const categories = await categoryCollection.find(query, options).toArray();
+                res.send(categories)
+
+            } catch (error) {
+                console.error('error fetching', error);
+                res.status(500).send({ message: 'failed to get category' })
+            }
         })
 
 
@@ -56,6 +77,47 @@ async function run() {
                 res.status(500).send({ error: 'Internal Server Error' });
             }
         });
+
+        // Update Category
+        app.patch('/categories/:id', async (req, res) => {
+            const { id } = req.params;
+            const updatedData = req.body;
+
+            try {
+                const result = await categoryCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: updatedData }
+                );
+
+                if (result.modifiedCount > 0) {
+                    res.send({ success: true });
+                } else {
+                    res.status(404).send({ success: false, message: 'Category not updated' });
+                }
+            } catch (error) {
+                console.error('Update failed:', error);
+                res.status(500).send({ success: false, message: 'Internal server error' });
+            }
+        });
+
+
+        //Delete category
+
+        app.delete('/categories/:id', async (req, res) => {
+            const id = req.params.id;
+            try {
+                const result = await categoryCollection.deleteOne({ _id: new ObjectId(id) });
+                if (result.deletedCount > 0) {
+                    res.send({ success: true });
+                } else {
+                    res.status(404).send({ error: 'Category not found' });
+                }
+            } catch (error) {
+                console.error('Delete failed:', error);
+                res.status(500).send({ error: 'Failed to delete category' });
+            }
+        });
+
 
 
 
