@@ -35,6 +35,7 @@ async function run() {
         const db = client.db('medicineDB')
         const categoryCollection = db.collection('categories')
         const usersCollection = db.collection('users')
+        const cartCollection = db.collection('carts');
 
         // app.get('/categories', async (req, res) => {
         //     const categories = await categoryCollection.find().toArray();
@@ -154,6 +155,68 @@ async function run() {
             }
         });
 
+
+        // cart
+
+        // Get cart for a user
+        app.get('/cart', async (req, res) => {
+            const userEmail = req.query.email;
+            if (!userEmail) {
+                return res.status(400).send({ error: "Missing email query param" });
+            }
+            const cart = await cartCollection.findOne({ userEmail });
+            if (!cart) {
+                return res.send({ items: [] }); // empty cart if none found
+            }
+            res.send(cart);
+        });
+
+        // Add or update cart items for a user
+        app.post('/cart', async (req, res) => {
+            const { userEmail, items } = req.body;
+            console.log("Received cart items:", items); // <-- check shape
+
+            if (!userEmail || !Array.isArray(items)) {
+                return res.status(400).send({ error: "Invalid request body" });
+            }
+
+            try {
+                const updateResult = await cartCollection.updateOne(
+                    { userEmail },
+                    {
+                        $set: {
+                            items,
+                            updatedAt: new Date(),
+                        }
+                    },
+                    { upsert: true }
+                );
+                res.send({
+                    success: true,
+                    modifiedCount: updateResult.modifiedCount,
+                    upsertedId: updateResult.upsertedId
+                });
+            } catch (error) {
+                console.error("Error updating cart:", error);
+                res.status(500).send({ error: "Internal Server Error" });
+            }
+        });
+
+
+        // Optionally, clear cart for a user
+        app.delete('/cart', async (req, res) => {
+            const userEmail = req.query.email;
+            if (!userEmail) {
+                return res.status(400).send({ error: "Missing email query param" });
+            }
+            try {
+                await cartCollection.deleteOne({ userEmail });
+                res.send({ success: true });
+            } catch (error) {
+                console.error("Error clearing cart:", error);
+                res.status(500).send({ error: "Internal Server Error" });
+            }
+        });
 
 
 
