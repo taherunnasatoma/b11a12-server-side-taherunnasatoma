@@ -8,6 +8,8 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 dotenv.config();
 
+
+const stripe= require('stripe')(process.env.PAYMENT_GATEWAY_KEY)
 const port = process.env.PORT || 3000;
 
 app.use(cors());
@@ -179,6 +181,7 @@ async function run() {
             if (!userEmail || !Array.isArray(items)) {
                 return res.status(400).send({ error: "Invalid request body" });
             }
+            const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
             try {
                 const updateResult = await cartCollection.updateOne(
@@ -186,6 +189,7 @@ async function run() {
                     {
                         $set: {
                             items,
+                            total,
                             updatedAt: new Date(),
                         }
                     },
@@ -217,6 +221,102 @@ async function run() {
                 res.status(500).send({ error: "Internal Server Error" });
             }
         });
+
+        //payment
+
+        // app.post('/payments', async (req, res) => {
+
+
+        //     console.log('headers in payments', req.headers)
+
+        //     try {
+        //         const { parcelId, email, amount, paymentMethod, transactionId } = req.body;
+
+        //         const updateResult = await parcelsCollection.updateOne(
+        //             {
+        //                 _id: new ObjectId(parcelId)
+        //             },
+        //             {
+        //                 $set: {
+        //                     paymentStatus: 'paid'
+        //                 }
+        //             }
+
+        //         )
+
+        //         if (updateResult.modifiedCount === 0) {
+        //             return res.status(404).send({ message: 'parcel not found or already paid' })
+        //         }
+
+
+        //         const paymentDoc = {
+        //             parcelId,
+        //             email,
+        //             amount,
+        //             paymentMethod,
+        //             transactionId,
+        //             paid_at_string: new Date().toISOString(),
+        //             paid_at: new Date()
+
+        //         }
+        //         const paymentResult = await paymentCollection.insertOne(paymentDoc)
+
+        //         res.status(201).send({
+        //             message: 'payment recorded and parcel marked as paid',
+        //             insertedId: paymentResult.insertedId
+        //         })
+        //     }
+
+        //     catch (error) {
+        //         console.error('payment processing failed', error)
+
+        //     }
+
+
+        // })
+
+
+        // app.get('/payments', verifyFBToken, async (req, res) => {
+        //     try {
+
+        //         const userEmail = req.query.email;
+        //         console.log('decoded', req.decoded)
+
+        //         if (req.decoded.email !== userEmail) {
+        //             return res.status(403).send({ message: 'forbidden access' })
+        //         }
+
+        //         const query = userEmail ? { email: userEmail } : {}
+        //         const options = { sort: { paid_at: -1 } }
+        //         const payments = await paymentCollection.find(query, options).toArray()
+        //         res.send(payments)
+        //     } catch (error) {
+        //         console.error('Error fetching payments:', error);
+        //         res.status(500).send({ message: 'Failed to fetch payments' });
+        //     }
+        // })
+
+
+
+
+
+
+        app.post('/create-payment-intent', async (req, res) => {
+
+            const totalInCents = req.body.totalInCents
+            try {
+                const paymentIntent = await stripe.paymentIntents.create({
+                    amount: totalInCents,
+                    currency: 'usd',
+                    payment_method_types: ['card'],
+                })
+                res.json({ clientSecret: paymentIntent.client_secret })
+            } catch (error) {
+                res.status(500).json({ error: error.message })
+            }
+        })
+
+
 
 
 
