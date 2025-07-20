@@ -38,6 +38,8 @@ async function run() {
         const categoryCollection = db.collection('categories')
         const usersCollection = db.collection('users')
         const cartCollection = db.collection('carts');
+        const paymentCollection = db.collection('payments');
+        const ordersCollection = db.collection('orders')
 
         // app.get('/categories', async (req, res) => {
         //     const categories = await categoryCollection.find().toArray();
@@ -160,18 +162,26 @@ async function run() {
 
         // cart
 
-        // Get cart for a user
-        app.get('/cart', async (req, res) => {
-            const userEmail = req.query.email;
-            if (!userEmail) {
-                return res.status(400).send({ error: "Missing email query param" });
-            }
-            const cart = await cartCollection.findOne({ userEmail });
-            if (!cart) {
-                return res.send({ items: [] }); // empty cart if none found
-            }
-            res.send(cart);
-        });
+       // ✅ Get cart for a user
+app.get('/cart', async (req, res) => {
+  const userEmail = req.query.email;
+  if (!userEmail) {
+    return res.status(400).send({ error: "Missing email query param" });
+  }
+
+  try {
+    const cart = await cartCollection.findOne({ userEmail });
+    if (!cart) {
+      // ✅ Return an empty cart structure if none found
+      return res.send({ userEmail, items: [] });
+    }
+    res.send(cart);
+  } catch (error) {
+    console.error("Error fetching cart:", error);
+    res.status(500).send({ error: "Internal Server Error" });
+  }
+});
+
 
         // Add or update cart items for a user
         app.post('/cart', async (req, res) => {
@@ -297,6 +307,75 @@ async function run() {
         // })
 
 
+app.post('/payments', async (req, res) => {
+  try {
+    const paymentInfo = req.body;
+
+    // Validate required fields
+    if (!paymentInfo.userEmail || !paymentInfo.amount || !paymentInfo.transactionId) {
+      return res.status(400).send({ error: "Missing required payment info" });
+    }
+
+    // Generate invoice number
+    const invoiceNumber = 'INV-' + Date.now();
+
+    // Prepare payment document with items and totalAmount
+    const paymentWithInvoice = {
+      ...paymentInfo,
+      invoiceNumber,
+      status: 'paid',
+      paidAt: new Date(),
+      createdAt: paymentInfo.createdAt || new Date(),
+    };
+
+    const result = await paymentCollection.insertOne(paymentWithInvoice);
+
+    res.status(201).send({
+      message: 'Payment recorded with invoice',
+      insertedId: result.insertedId,
+      invoiceNumber
+    });
+  } catch (error) {
+    console.error('Error saving payment:', error);
+    res.status(500).send({ error: 'Internal Server Error' });
+  }
+});
+
+
+app.get('/payments', async (req, res) => {
+  const userEmail = req.query.email;
+
+  if (!userEmail) {
+    return res.status(400).send({ error: 'Missing email query param' });
+  }
+
+  try {
+    const payments = await paymentCollection
+      .find({  userEmail })
+      .sort({ paidAt: -1 })
+      .toArray();
+
+    res.send(payments);
+  } catch (error) {
+    console.error('Error fetching payment history:', error);
+    res.status(500).send({ error: 'Internal Server Error' });
+  }
+});
+// Get payment by invoiceNumber
+app.get('/payments/invoice/:invoiceNumber', async (req, res) => {
+  const { invoiceNumber } = req.params;
+  try {
+    const payment = await paymentCollection.findOne({ invoiceNumber });
+    if (!payment) {
+      return res.status(404).send({ message: 'Invoice not found' });
+    }
+    res.send(payment);
+  } catch (error) {
+    console.error('Error fetching invoice:', error);
+    res.status(500).send({ error: 'Internal Server Error' });
+  }
+});
+
 
 
 
@@ -316,6 +395,21 @@ async function run() {
             }
         })
 
+//order
+app.post('/orders', async (req, res) => {
+  const order = req.body;
+  const result = await ordersCollection.insertOne(order);
+  res.send(result);
+});
+// Get all orders of a user
+app.get('/orders', async (req, res) => {
+  const email = req.query.email;
+  if (!email) {
+    return res.status(400).send({ error: "Missing email query param" });
+  }
+  const orders = await ordersCollection.find({ userEmail: email }).toArray();
+  res.send(orders);
+});
 
 
 
