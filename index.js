@@ -4,16 +4,26 @@ const dotenv = require('dotenv');
 const app = express();
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const admin = require("firebase-admin");
 
 
 dotenv.config();
 
 
-const stripe= require('stripe')(process.env.PAYMENT_GATEWAY_KEY)
+const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY)
 const port = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+
+
+
+const serviceAccount = require("./firebase-adminsdk-.json");
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
+
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.i41acjo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -40,11 +50,34 @@ async function run() {
         const cartCollection = db.collection('carts');
         const paymentCollection = db.collection('payments');
         const ordersCollection = db.collection('orders')
+        const advertisementCollection= db.collection('advertisements')
 
-        // app.get('/categories', async (req, res) => {
-        //     const categories = await categoryCollection.find().toArray();
-        //     res.send(categories)
-        // })
+        //custom middleware
+
+        const verifyFBToken = async (req, res, next) => {
+            const authHeaders = req.headers.authorization;
+            if (!authHeaders) {
+                return res.status(401).send({ message: 'unauthorized access' })
+            }
+            const token = authHeaders.split(' ')[1];
+
+            if (!token) {
+                return res.status(401).send({ message: 'unauthorized access' })
+            }
+            try {
+                const decoded = await admin.auth().verifyIdToken(token)
+                req.decoded = decoded;
+
+                next()
+
+            }
+            catch (error) {
+                return res.status(403).send({ message: 'forbidden access' })
+            }
+
+
+
+        }
 
 
         //users
@@ -162,25 +195,25 @@ async function run() {
 
         // cart
 
-       // ✅ Get cart for a user
-app.get('/cart', async (req, res) => {
-  const userEmail = req.query.email;
-  if (!userEmail) {
-    return res.status(400).send({ error: "Missing email query param" });
-  }
+        // ✅ Get cart for a user
+        app.get('/cart', async (req, res) => {
+            const userEmail = req.query.email;
+            if (!userEmail) {
+                return res.status(400).send({ error: "Missing email query param" });
+            }
 
-  try {
-    const cart = await cartCollection.findOne({ userEmail });
-    if (!cart) {
-      // ✅ Return an empty cart structure if none found
-      return res.send({ userEmail, items: [] });
-    }
-    res.send(cart);
-  } catch (error) {
-    console.error("Error fetching cart:", error);
-    res.status(500).send({ error: "Internal Server Error" });
-  }
-});
+            try {
+                const cart = await cartCollection.findOne({ userEmail });
+                if (!cart) {
+                    // ✅ Return an empty cart structure if none found
+                    return res.send({ userEmail, items: [] });
+                }
+                res.send(cart);
+            } catch (error) {
+                console.error("Error fetching cart:", error);
+                res.status(500).send({ error: "Internal Server Error" });
+            }
+        });
 
 
         // Add or update cart items for a user
@@ -307,74 +340,79 @@ app.get('/cart', async (req, res) => {
         // })
 
 
-app.post('/payments', async (req, res) => {
-  try {
-    const paymentInfo = req.body;
+        app.post('/payments', async (req, res) => {
+            try {
+                const paymentInfo = req.body;
 
-    // Validate required fields
-    if (!paymentInfo.userEmail || !paymentInfo.amount || !paymentInfo.transactionId) {
-      return res.status(400).send({ error: "Missing required payment info" });
-    }
+                // Validate required fields
+                if (!paymentInfo.userEmail || !paymentInfo.amount || !paymentInfo.transactionId) {
+                    return res.status(400).send({ error: "Missing required payment info" });
+                }
 
-    // Generate invoice number
-    const invoiceNumber = 'INV-' + Date.now();
+                // Generate invoice number
+                const invoiceNumber = 'INV-' + Date.now();
 
-    // Prepare payment document with items and totalAmount
-    const paymentWithInvoice = {
-      ...paymentInfo,
-      invoiceNumber,
-      status: 'paid',
-      paidAt: new Date(),
-      createdAt: paymentInfo.createdAt || new Date(),
-    };
+                // Prepare payment document with items and totalAmount
+                const paymentWithInvoice = {
+                    ...paymentInfo,
+                    invoiceNumber,
+                    status: 'paid',
+                    paidAt: new Date(),
+                    createdAt: paymentInfo.createdAt || new Date(),
+                };
 
-    const result = await paymentCollection.insertOne(paymentWithInvoice);
+                const result = await paymentCollection.insertOne(paymentWithInvoice);
 
-    res.status(201).send({
-      message: 'Payment recorded with invoice',
-      insertedId: result.insertedId,
-      invoiceNumber
-    });
-  } catch (error) {
-    console.error('Error saving payment:', error);
-    res.status(500).send({ error: 'Internal Server Error' });
-  }
-});
+                res.status(201).send({
+                    message: 'Payment recorded with invoice',
+                    insertedId: result.insertedId,
+                    invoiceNumber
+                });
+            } catch (error) {
+                console.error('Error saving payment:', error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
 
 
-app.get('/payments', async (req, res) => {
-  const userEmail = req.query.email;
+        app.get('/payments', verifyFBToken, async (req, res) => {
 
-  if (!userEmail) {
-    return res.status(400).send({ error: 'Missing email query param' });
-  }
 
-  try {
-    const payments = await paymentCollection
-      .find({  userEmail })
-      .sort({ paidAt: -1 })
-      .toArray();
+            const userEmail = req.query.email;
+            console.log('decoded', req.decoded)
+            if (req.decoded.email !== userEmail) {
+                return res.status(403).send({ message: 'forbidden access' })
+            }
+            if (!userEmail) {
+                return res.status(400).send({ error: 'Missing email query param' });
+            }
 
-    res.send(payments);
-  } catch (error) {
-    console.error('Error fetching payment history:', error);
-    res.status(500).send({ error: 'Internal Server Error' });
-  }
-});
-// Get payment by invoiceNumber
-app.get('/payments/invoice/:invoiceNumber', async (req, res) => {
-  const { invoiceNumber } = req.params;
-  try {
-    const payment = await paymentCollection.findOne({ invoiceNumber });
-    if (!payment) {
-      return res.status(404).send({ message: 'Invoice not found' });
-    }
-    res.send(payment);
-  } catch (error) {
-    console.error('Error fetching invoice:', error);
-    res.status(500).send({ error: 'Internal Server Error' });
-  }
-});
+            try {
+                const payments = await paymentCollection
+                    .find({ userEmail })
+                    .sort({ paidAt: -1 })
+                    .toArray();
+
+                res.send(payments);
+            } catch (error) {
+                console.error('Error fetching payment history:', error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
+        // Get payment by invoiceNumber
+        app.get('/payments/invoice/:invoiceNumber', async (req, res) => {
+            const { invoiceNumber } = req.params;
+            try {
+                const payment = await paymentCollection.findOne({ invoiceNumber });
+                if (!payment) {
+                    return res.status(404).send({ message: 'Invoice not found' });
+                }
+                res.send(payment);
+            } catch (error) {
+                console.error('Error fetching invoice:', error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
 
 
 
@@ -395,21 +433,50 @@ app.get('/payments/invoice/:invoiceNumber', async (req, res) => {
             }
         })
 
-//order
-app.post('/orders', async (req, res) => {
-  const order = req.body;
-  const result = await ordersCollection.insertOne(order);
-  res.send(result);
-});
-// Get all orders of a user
-app.get('/orders', async (req, res) => {
-  const email = req.query.email;
-  if (!email) {
-    return res.status(400).send({ error: "Missing email query param" });
-  }
-  const orders = await ordersCollection.find({ userEmail: email }).toArray();
-  res.send(orders);
-});
+        //order
+        app.post('/orders', async (req, res) => {
+            const order = req.body;
+            const result = await ordersCollection.insertOne(order);
+            res.send(result);
+        });
+        // Get all orders of a user
+        app.get('/orders', verifyFBToken, async (req, res) => {
+            const email = req.query.email;
+            if (!email) {
+                return res.status(400).send({ error: "Missing email query param" });
+            }
+            const orders = await ordersCollection.find({ userEmail: email }).toArray();
+            res.send(orders);
+        });
+
+        // POST a new advertisement
+        app.post('/advertisements', async (req, res) => {
+            try {
+                const advertisement = req.body;
+                advertisement.status = 'pending'; // default status
+                advertisement.createdAt = new Date();
+
+                const result = await advertisementCollection.insertOne(advertisement);
+                res.send(result);
+            } catch (error) {
+                console.error('Error posting advertisement:', error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
+
+        // GET all ads by seller email
+        app.get('/advertisements', async (req, res) => {
+            const { email } = req.query;
+            try {
+                const query = email ? { sellerEmail: email } : {};
+                const ads = await advertisementCollection.find(query).sort({ createdAt: -1 }).toArray();
+                res.send(ads);
+            } catch (error) {
+                console.error('Error fetching ads:', error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
+
 
 
 
