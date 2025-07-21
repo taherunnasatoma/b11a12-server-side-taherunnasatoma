@@ -50,7 +50,7 @@ async function run() {
         const cartCollection = db.collection('carts');
         const paymentCollection = db.collection('payments');
         const ordersCollection = db.collection('orders')
-        const advertisementCollection= db.collection('advertisements')
+        const advertisementCollection = db.collection('advertisements')
 
         //custom middleware
 
@@ -450,10 +450,11 @@ async function run() {
         });
 
         // POST a new advertisement
+        // POST a new advertisement
         app.post('/advertisements', async (req, res) => {
             try {
                 const advertisement = req.body;
-                advertisement.status = 'pending'; // default status
+                advertisement.status = 'pending';
                 advertisement.createdAt = new Date();
 
                 const result = await advertisementCollection.insertOne(advertisement);
@@ -463,6 +464,7 @@ async function run() {
                 res.status(500).send({ error: 'Internal Server Error' });
             }
         });
+
 
         // GET all ads by seller email
         app.get('/advertisements', async (req, res) => {
@@ -475,6 +477,29 @@ async function run() {
                 console.error('Error fetching ads:', error);
                 res.status(500).send({ error: 'Internal Server Error' });
             }
+        });
+
+        // Get all advertisements (admin)
+        app.get('/advertisements', async (req, res) => {
+            const ads = await advertisementCollection.find().sort({ _id: -1 }).toArray();
+            res.send(ads);
+        });
+
+        // Update advertisement status
+        app.patch('/advertisements/:id', async (req, res) => {
+            const { id } = req.params;
+            const { status } = req.body;
+            const result = await advertisementCollection.updateOne(
+                { _id: new ObjectId(id) },
+                { $set: { status } }
+            );
+            res.send(result);
+        });
+
+        // Get only approved advertisements for homepage slider
+        app.get('/advertisements/banner', async (req, res) => {
+            const ads = await advertisementCollection.find({ status: 'approved' }).toArray();
+            res.send(ads);
         });
 
 
