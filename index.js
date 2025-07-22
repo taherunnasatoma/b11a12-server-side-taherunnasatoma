@@ -97,6 +97,71 @@ async function run() {
             res.send(result)
 
         })
+        
+        // Search users by email (partial or full) or by _id
+app.get('/users', verifyFBToken, async (req, res) => {
+  try {
+    const { search } = req.query;
+
+    if (!search) {
+      // Return all users (or limit to 100 for safety)
+      const users = await usersCollection.find({}).limit(100).toArray();
+      return res.send(users);
+    }
+
+    
+
+    const query = {
+      $or: [
+        { email: { $regex: search, $options: 'i' } }, // case-insensitive match on email
+        // You can add other fields if needed, like username, name, etc.
+      ],
+    };
+
+    const users = await usersCollection.find(query).toArray();
+    res.send(users);
+  } catch (error) {
+    console.error('Error searching users:', error);
+    res.status(500).send({ error: 'Internal Server Error' });
+  }
+});
+
+// Update user role by admin (only admin can do this)
+app.patch('/users/:id/role', verifyFBToken, async (req, res) => {
+  try {
+    // Only admins can update user roles
+    const requesterEmail = req.decoded.email;
+    const requesterAccount = await usersCollection.findOne({ email: requesterEmail });
+
+    if (!requesterAccount || requesterAccount.role !== 'admin') {
+      return res.status(403).send({ message: 'forbidden access - only admin allowed' });
+    }
+
+    const userId = req.params.id;
+    const { role } = req.body;
+
+    // Validate role input
+    const allowedRoles = ['user', 'seller', 'admin'];
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).send({ message: 'Invalid role' });
+    }
+
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: { role } }
+    );
+
+    if (result.modifiedCount > 0) {
+      res.send({ success: true, message: `User role updated to ${role}` });
+    } else {
+      res.status(404).send({ success: false, message: 'User not found or role unchanged' });
+    }
+  } catch (error) {
+    console.error('Error updating user role:', error);
+    res.status(500).send({ error: 'Internal Server Error' });
+  }
+});
+
 
         //medicines
         // POST medicine
@@ -265,79 +330,7 @@ async function run() {
             }
         });
 
-        //payment
-
-        // app.post('/payments', async (req, res) => {
-
-
-        //     console.log('headers in payments', req.headers)
-
-        //     try {
-        //         const { parcelId, email, amount, paymentMethod, transactionId } = req.body;
-
-        //         const updateResult = await parcelsCollection.updateOne(
-        //             {
-        //                 _id: new ObjectId(parcelId)
-        //             },
-        //             {
-        //                 $set: {
-        //                     paymentStatus: 'paid'
-        //                 }
-        //             }
-
-        //         )
-
-        //         if (updateResult.modifiedCount === 0) {
-        //             return res.status(404).send({ message: 'parcel not found or already paid' })
-        //         }
-
-
-        //         const paymentDoc = {
-        //             parcelId,
-        //             email,
-        //             amount,
-        //             paymentMethod,
-        //             transactionId,
-        //             paid_at_string: new Date().toISOString(),
-        //             paid_at: new Date()
-
-        //         }
-        //         const paymentResult = await paymentCollection.insertOne(paymentDoc)
-
-        //         res.status(201).send({
-        //             message: 'payment recorded and parcel marked as paid',
-        //             insertedId: paymentResult.insertedId
-        //         })
-        //     }
-
-        //     catch (error) {
-        //         console.error('payment processing failed', error)
-
-        //     }
-
-
-        // })
-
-
-        // app.get('/payments', verifyFBToken, async (req, res) => {
-        //     try {
-
-        //         const userEmail = req.query.email;
-        //         console.log('decoded', req.decoded)
-
-        //         if (req.decoded.email !== userEmail) {
-        //             return res.status(403).send({ message: 'forbidden access' })
-        //         }
-
-        //         const query = userEmail ? { email: userEmail } : {}
-        //         const options = { sort: { paid_at: -1 } }
-        //         const payments = await paymentCollection.find(query, options).toArray()
-        //         res.send(payments)
-        //     } catch (error) {
-        //         console.error('Error fetching payments:', error);
-        //         res.status(500).send({ message: 'Failed to fetch payments' });
-        //     }
-        // })
+        
 
 
         app.post('/payments', async (req, res) => {
