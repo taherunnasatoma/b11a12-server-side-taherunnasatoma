@@ -79,6 +79,16 @@ async function run() {
 
         }
 
+        const verifyAdmin = async(req,res,next)=>{
+            const email = req.decoded.email;
+            const query = {email}
+            const user = await usersCollection.findOne(query);
+            if(!user  || user.role  !==admin){
+                return res.status(403).send({message: 'forbidden access'})
+            }
+            next( )
+        }
+
 
         //users
         app.post('/users', async (req, res) => {
@@ -127,7 +137,7 @@ app.get('/users', verifyFBToken, async (req, res) => {
 });
 
 // Update user role by admin (only admin can do this)
-app.patch('/users/:id/role', verifyFBToken, async (req, res) => {
+app.patch('/users/:id/role', verifyFBToken,verifyAdmin, async (req, res) => {
   try {
     // Only admins can update user roles
     const requesterEmail = req.decoded.email;
@@ -158,6 +168,26 @@ app.patch('/users/:id/role', verifyFBToken, async (req, res) => {
     }
   } catch (error) {
     console.error('Error updating user role:', error);
+    res.status(500).send({ error: 'Internal Server Error' });
+  }
+});
+
+// GET /users/role?email=user@example.com
+app.get('/users/role', async (req, res) => {
+  const email = req.query.email;
+  if (!email) {
+    return res.status(400).send({ error: 'Email query parameter is required' });
+  }
+
+  try {
+    const user = await usersCollection.findOne({ email });
+    if (!user) {
+      return res.status(404).send({ error: 'User not found' });
+    }
+
+    res.send({ email: user.email, role: user.role || 'user' });
+  } catch (error) {
+    console.error('Error fetching user role:', error);
     res.status(500).send({ error: 'Internal Server Error' });
   }
 });
@@ -202,7 +232,7 @@ app.patch('/users/:id/role', verifyFBToken, async (req, res) => {
 
 
         // Add Category (POST)
-        app.post('/categories', async (req, res) => {
+        app.post('/categories',verifyFBToken,verifyAdmin, async (req, res) => {
             try {
                 const category = req.body;
                 const result = await categoryCollection.insertOne(category);
@@ -218,7 +248,7 @@ app.patch('/users/:id/role', verifyFBToken, async (req, res) => {
         });
 
         // Update Category
-        app.patch('/categories/:id', async (req, res) => {
+        app.patch('/categories/:id',verifyFBToken,verifyAdmin, async (req, res) => {
             const { id } = req.params;
             const updatedData = req.body;
 
@@ -242,7 +272,7 @@ app.patch('/users/:id/role', verifyFBToken, async (req, res) => {
 
         //Delete category
 
-        app.delete('/categories/:id', async (req, res) => {
+        app.delete('/categories/:id',verifyFBToken,verifyAdmin, async (req, res) => {
             const id = req.params.id;
             try {
                 const result = await categoryCollection.deleteOne({ _id: new ObjectId(id) });
@@ -443,7 +473,7 @@ app.patch('/users/:id/role', verifyFBToken, async (req, res) => {
         });
 
         // POST a new advertisement
-        // POST a new advertisement
+  
         app.post('/advertisements', async (req, res) => {
             try {
                 const advertisement = req.body;
@@ -473,7 +503,7 @@ app.patch('/users/:id/role', verifyFBToken, async (req, res) => {
         });
 
         // Get all advertisements (admin)
-        app.get('/advertisements', async (req, res) => {
+        app.get('/advertisements',verifyFBToken,verifyAdmin, async (req, res) => {
             const ads = await advertisementCollection.find().sort({ _id: -1 }).toArray();
             res.send(ads);
         });
