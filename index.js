@@ -79,14 +79,14 @@ async function run() {
 
         }
 
-        const verifyAdmin = async(req,res,next)=>{
+        const verifyAdmin = async (req, res, next) => {
             const email = req.decoded.email;
-            const query = {email}
+            const query = { email }
             const user = await usersCollection.findOne(query);
-            if(!user  || user.role  !==admin){
-                return res.status(403).send({message: 'forbidden access'})
+            if (!user || user.role !== 'admin') {
+                return res.status(403).send({ message: 'forbidden access' })
             }
-            next( )
+            next()
         }
 
 
@@ -107,90 +107,90 @@ async function run() {
             res.send(result)
 
         })
-        
+
         // Search users by email (partial or full) or by _id
-app.get('/users', verifyFBToken, async (req, res) => {
-  try {
-    const { search } = req.query;
+        app.get('/users', verifyFBToken, async (req, res) => {
+            try {
+                const { search } = req.query;
 
-    if (!search) {
-      // Return all users (or limit to 100 for safety)
-      const users = await usersCollection.find({}).limit(100).toArray();
-      return res.send(users);
-    }
+                if (!search) {
+                    // Return all users (or limit to 100 for safety)
+                    const users = await usersCollection.find({}).limit(100).toArray();
+                    return res.send(users);
+                }
 
-    
 
-    const query = {
-      $or: [
-        { email: { $regex: search, $options: 'i' } }, // case-insensitive match on email
-        // You can add other fields if needed, like username, name, etc.
-      ],
-    };
 
-    const users = await usersCollection.find(query).toArray();
-    res.send(users);
-  } catch (error) {
-    console.error('Error searching users:', error);
-    res.status(500).send({ error: 'Internal Server Error' });
-  }
-});
+                const query = {
+                    $or: [
+                        { email: { $regex: search, $options: 'i' } }, // case-insensitive match on email
+                        // You can add other fields if needed, like username, name, etc.
+                    ],
+                };
 
-// Update user role by admin (only admin can do this)
-app.patch('/users/:id/role', verifyFBToken,verifyAdmin, async (req, res) => {
-  try {
-    // Only admins can update user roles
-    const requesterEmail = req.decoded.email;
-    const requesterAccount = await usersCollection.findOne({ email: requesterEmail });
+                const users = await usersCollection.find(query).toArray();
+                res.send(users);
+            } catch (error) {
+                console.error('Error searching users:', error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
 
-    if (!requesterAccount || requesterAccount.role !== 'admin') {
-      return res.status(403).send({ message: 'forbidden access - only admin allowed' });
-    }
+        // Update user role by admin (only admin can do this)
+        app.patch('/users/:id/role', verifyFBToken, verifyAdmin, async (req, res) => {
+            try {
+                // Only admins can update user roles
+                const requesterEmail = req.decoded.email;
+                const requesterAccount = await usersCollection.findOne({ email: requesterEmail });
 
-    const userId = req.params.id;
-    const { role } = req.body;
+                if (!requesterAccount || requesterAccount.role !== 'admin') {
+                    return res.status(403).send({ message: 'forbidden access - only admin allowed' });
+                }
 
-    // Validate role input
-    const allowedRoles = ['user', 'seller', 'admin'];
-    if (!allowedRoles.includes(role)) {
-      return res.status(400).send({ message: 'Invalid role' });
-    }
+                const userId = req.params.id;
+                const { role } = req.body;
 
-    const result = await usersCollection.updateOne(
-      { _id: new ObjectId(userId) },
-      { $set: { role } }
-    );
+                // Validate role input
+                const allowedRoles = ['user', 'seller', 'admin'];
+                if (!allowedRoles.includes(role)) {
+                    return res.status(400).send({ message: 'Invalid role' });
+                }
 
-    if (result.modifiedCount > 0) {
-      res.send({ success: true, message: `User role updated to ${role}` });
-    } else {
-      res.status(404).send({ success: false, message: 'User not found or role unchanged' });
-    }
-  } catch (error) {
-    console.error('Error updating user role:', error);
-    res.status(500).send({ error: 'Internal Server Error' });
-  }
-});
+                const result = await usersCollection.updateOne(
+                    { _id: new ObjectId(userId) },
+                    { $set: { role } }
+                );
 
-// GET /users/role?email=user@example.com
-app.get('/users/role', async (req, res) => {
-  const email = req.query.email;
-  if (!email) {
-    return res.status(400).send({ error: 'Email query parameter is required' });
-  }
+                if (result.modifiedCount > 0) {
+                    res.send({ success: true, message: `User role updated to ${role}` });
+                } else {
+                    res.status(404).send({ success: false, message: 'User not found or role unchanged' });
+                }
+            } catch (error) {
+                console.error('Error updating user role:', error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
 
-  try {
-    const user = await usersCollection.findOne({ email });
-    if (!user) {
-      return res.status(404).send({ error: 'User not found' });
-    }
+        // GET /users/role?email=user@example.com
+        app.get('/users/role', async (req, res) => {
+            const email = req.query.email;
+            if (!email) {
+                return res.status(400).send({ error: 'Email query parameter is required' });
+            }
 
-    res.send({ email: user.email, role: user.role || 'user' });
-  } catch (error) {
-    console.error('Error fetching user role:', error);
-    res.status(500).send({ error: 'Internal Server Error' });
-  }
-});
+            try {
+                const user = await usersCollection.findOne({ email });
+                if (!user) {
+                    return res.status(404).send({ error: 'User not found' });
+                }
+
+                res.send({ email: user.email, role: user.role || 'user' });
+            } catch (error) {
+                console.error('Error fetching user role:', error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
 
 
         //medicines
@@ -232,7 +232,7 @@ app.get('/users/role', async (req, res) => {
 
 
         // Add Category (POST)
-        app.post('/categories',verifyFBToken,verifyAdmin, async (req, res) => {
+        app.post('/categories', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const category = req.body;
                 const result = await categoryCollection.insertOne(category);
@@ -248,7 +248,7 @@ app.get('/users/role', async (req, res) => {
         });
 
         // Update Category
-        app.patch('/categories/:id',verifyFBToken,verifyAdmin, async (req, res) => {
+        app.patch('/categories/:id', verifyFBToken, verifyAdmin, async (req, res) => {
             const { id } = req.params;
             const updatedData = req.body;
 
@@ -272,7 +272,7 @@ app.get('/users/role', async (req, res) => {
 
         //Delete category
 
-        app.delete('/categories/:id',verifyFBToken,verifyAdmin, async (req, res) => {
+        app.delete('/categories/:id', verifyFBToken, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             try {
                 const result = await categoryCollection.deleteOne({ _id: new ObjectId(id) });
@@ -360,7 +360,7 @@ app.get('/users/role', async (req, res) => {
             }
         });
 
-        
+
 
 
         app.post('/payments', async (req, res) => {
@@ -437,6 +437,42 @@ app.get('/users/role', async (req, res) => {
             }
         });
 
+        
+// Admin: Get all payments (paid + pending)
+app.get("/admin/payments", verifyFBToken, verifyAdmin, async (req, res) => {
+  const payments = await paymentCollection.find().toArray();
+  res.send(payments);
+});
+
+
+
+        // Admin: Approve (mark as paid) a pending payment
+        app.patch('/admin/payments/:id', verifyFBToken, verifyAdmin, async (req, res) => {
+            const { id } = req.params;
+
+            try {
+                const result = await paymentCollection.updateOne(
+                    { _id: new ObjectId(id), status: 'pending' },
+                    {
+                        $set: {
+                            status: 'paid',
+                            paidAt: new Date()
+                        }
+                    }
+                );
+
+                if (result.modifiedCount > 0) {
+                    res.send({ success: true, message: 'Payment approved' });
+                } else {
+                    res.status(404).send({ success: false, message: 'No pending payment found with that ID' });
+                }
+            } catch (error) {
+                console.error('Error updating payment status:', error);
+                res.status(500).send({ error: 'Internal Server Error' });
+            }
+        });
+
+
 
 
 
@@ -473,7 +509,7 @@ app.get('/users/role', async (req, res) => {
         });
 
         // POST a new advertisement
-  
+
         app.post('/advertisements', async (req, res) => {
             try {
                 const advertisement = req.body;
@@ -503,7 +539,7 @@ app.get('/users/role', async (req, res) => {
         });
 
         // Get all advertisements (admin)
-        app.get('/advertisements',verifyFBToken,verifyAdmin, async (req, res) => {
+        app.get('/advertisements', verifyFBToken, verifyAdmin, async (req, res) => {
             const ads = await advertisementCollection.find().sort({ _id: -1 }).toArray();
             res.send(ads);
         });
