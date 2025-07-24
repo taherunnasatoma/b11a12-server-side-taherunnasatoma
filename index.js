@@ -51,6 +51,8 @@ async function run() {
         const paymentCollection = db.collection('payments');
         const ordersCollection = db.collection('orders')
         const advertisementCollection = db.collection('advertisements')
+        const medicineCollection = db.collection('medicines');
+
 
         //custom middleware
 
@@ -363,39 +365,76 @@ async function run() {
 
 
 
-        app.post('/payments', async (req, res) => {
-            try {
-                const paymentInfo = req.body;
+        
 
-                // Validate required fields
-                if (!paymentInfo.userEmail || !paymentInfo.amount || !paymentInfo.transactionId) {
-                    return res.status(400).send({ error: "Missing required payment info" });
-                }
+const { ObjectId } = require('mongodb');
 
-                // Generate invoice number
-                const invoiceNumber = 'INV-' + Date.now();
+app.post('/payments', async (req, res) => {
+    try {
+        const paymentInfo = req.body;
 
-                // Prepare payment document with items and totalAmount
-                const paymentWithInvoice = {
-                    ...paymentInfo,
-                    invoiceNumber,
-                    status: 'paid',
-                    paidAt: new Date(),
-                    createdAt: paymentInfo.createdAt || new Date(),
+        if (!paymentInfo.userEmail || !paymentInfo.amount || !paymentInfo.transactionId || !paymentInfo.items) {
+            return res.status(400).send({ error: "Missing required payment info" });
+        }
+
+        // Generate invoice number
+        const invoiceNumber = 'INV-' + Date.now();
+
+        // Enrich items with sellerEmail
+        const enrichedItems = await Promise.all(
+            paymentInfo.items.map(async (item) => {
+                const medicine = await medicineCollection.findOne({ _id: new ObjectId(item._id) });
+
+                return {
+                    _id: item._id,
+                    quantity: item.quantity || 1,
+                    name: medicine?.itemName,
+                    price: medicine?.price,
+                    sellerEmail: medicine?.added_by || 'unknown', // <- key part
                 };
+            })
+        );
 
-                const result = await paymentCollection.insertOne(paymentWithInvoice);
+        const paymentWithInvoice = {
+            userEmail: paymentInfo.userEmail,
+            amount: paymentInfo.amount,
+            transactionId: paymentInfo.transactionId,
+            items: enrichedItems,
+            invoiceNumber,
+            status: 'paid',
+            paidAt: new Date(),
+            createdAt: paymentInfo.createdAt || new Date(),
+        };
 
-                res.status(201).send({
-                    message: 'Payment recorded with invoice',
-                    insertedId: result.insertedId,
-                    invoiceNumber
-                });
-            } catch (error) {
-                console.error('Error saving payment:', error);
-                res.status(500).send({ error: 'Internal Server Error' });
-            }
+        const result = await paymentCollection.insertOne(paymentWithInvoice);
+
+        res.status(201).send({
+            message: 'Payment recorded',
+            insertedId: result.insertedId,
+            invoiceNumber
         });
+    } catch (error) {
+        console.error('Error saving payment:', error);
+        res.status(500).send({ error: 'Internal Server Error' });
+    }
+});
+
+app.get('/seller/payments', async (req, res) => {
+    const { sellerEmail } = req.query;
+
+    if (!sellerEmail) {
+        return res.status(400).send({ error: 'Missing sellerEmail' });
+    }
+
+    const sellerPayments = await paymentCollection.find({
+        items: {
+            $elemMatch: { sellerEmail }
+        }
+    }).toArray();
+
+    res.send(sellerPayments);
+});
+
 
 
         app.get('/payments', verifyFBToken, async (req, res) => {
