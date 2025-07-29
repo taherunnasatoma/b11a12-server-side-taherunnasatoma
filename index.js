@@ -546,6 +546,41 @@ app.get("/admin/payments", verifyFBToken, verifyAdmin, async (req, res) => {
             const orders = await ordersCollection.find({ userEmail: email }).toArray();
             res.send(orders);
         });
+        app.patch('/orders/:id/status', async (req, res) => {
+  const orderId = req.params.id;
+  const { status, transactionId } = req.body;
+
+  if (!status) {
+    return res.status(400).send({ error: 'Status is required' });
+  }
+
+  try {
+    const updateDoc = { status };
+
+    if (transactionId) {
+      updateDoc.transactionId = transactionId;
+    }
+
+    if (status === 'paid') {
+      updateDoc.paidAt = new Date();
+    }
+
+    const result = await ordersCollection.updateOne(
+      { _id: new ObjectId(orderId) },
+      { $set: updateDoc }
+    );
+
+    if (result.modifiedCount > 0) {
+      res.send({ success: true, message: `Order status updated to ${status}` });
+    } else {
+      res.status(404).send({ success: false, message: 'Order not found or status unchanged' });
+    }
+  } catch (error) {
+    console.error('Error updating order status:', error);
+    res.status(500).send({ error: 'Internal Server Error' });
+  }
+});
+
 
         // POST a new advertisement
 
